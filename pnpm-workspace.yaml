@@ -1,0 +1,8 @@
+ignoredBuiltDependencies:
+  - unrs-resolver
+
+# esbuild needs its postinstall to fetch the platform binary, which Phase 8's
+# engine bundler shells out to.
+onlyBuiltDependencies:
+  - esbuild
+  - sharp

@@ -1,0 +1,822 @@
+@import "tailwindcss";
+
+/**
+ * A dark instrument panel around a bright picture.
+ *
+ * The imagery in the preview is loud and varied — reds, iridescence, deep
+ * blacks. So the interface is achromatic on purpose: every colour on this page
+ * should come from the visitor's own carousel, and the one accent is spent only
+ * on state (a filled slider track, a focus ring, a confirmation). Chrome that
+ * competed with the preview would be chrome that spoiled the screenshot, and the
+ * screenshot is the advertisement.
+ */
+@theme inline {
+  --color-cg-ink: #08090b;
+  --color-cg-panel: #0f1013;
+  --color-cg-raised: #16181c;
+  --color-cg-line: #232529;
+  --color-cg-line-strong: #33363d;
+  /* Three steps of emphasis, and every one of them legible.
+   *
+   * The first pass set these by eye on a bright screen and they measured badly:
+   * `faint` came out at 2.89:1 on the panel and `muted` at 5.96, so the section
+   * titles, the tool name, the inert notes and the file sizes were all at or
+   * under the line. Measured on 11 Aug 2026 and raised together, which keeps the
+   * hierarchy — 15.4 : 9.2 : 5.8 against the panel — while putting the bottom of
+   * it comfortably past the 4.5:1 AA floor rather than under it. */
+  --color-cg-text: #e9e7e2;
+  --color-cg-muted: #b2b4ba;
+  --color-cg-faint: #8b8e95;
+  --color-cg-accent: #cdff3e;
+
+  --font-cg-display: var(--font-instrument-serif);
+  --font-cg-sans: var(--font-schibsted);
+  --font-cg-mono: var(--font-jetbrains-mono);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-cg-ink);
+  color: var(--color-cg-text);
+  font-family: var(--font-cg-sans);
+  /* A barely-there grain, so the near-black reads as a surface rather than as
+     an absence. Fixed attachment keeps it from swimming while the page scrolls. */
+  background-image: radial-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+  background-size: 3px 3px;
+  background-attachment: fixed;
+}
+
+/* One orchestrated arrival rather than a scattering of micro-animations. */
+@keyframes cg-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise {
+  animation: cg-rise 620ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation-duration: 1ms;
+  }
+}
+
+
+/* One easing for everything on this page that moves — the iOS drawer curve. A
+   page whose parts decelerate differently reads as several pieces of software. */
+:root {
+  --cg-ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* The editor is one locked screen. Scoped to a class the editor adds and
+   removes, because the catalogue pages under the same root layout still scroll. */
+.cg-locked,
+.cg-locked body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* --- the tool drawer's scrollbar -----------------------------------------
+   Dark, thin, and only as loud as it needs to be. Firefox takes the two
+   properties; every other engine takes the pseudo-elements. */
+.cg-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  overscroll-behavior: contain;
+}
+
+.cg-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.cg-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cg-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.14);
+}
+
+.cg-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.24);
+}
+
+/* Controls dissolve as they pass under the pinned header rather than colliding
+   with its edge. */
+.cg-scroll-fade {
+  mask-image: linear-gradient(to bottom, transparent 0, #000 24px);
+}
+
+/* --- the glow --------------------------------------------------------------
+   The one piece of colour in the interface: a low, wide ember on the drawer's
+   bottom edge, grained so it reads as a surface rather than as a gradient. It
+   sits behind the controls and never over them. */
+.cg-glow {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 320px;
+  pointer-events: none;
+  background: radial-gradient(
+    150% 105% at 50% 122%,
+    rgba(255, 128, 66, 0.42) 0%,
+    rgba(255, 118, 58, 0.16) 40%,
+    rgba(255, 110, 50, 0.05) 62%,
+    transparent 78%
+  );
+}
+
+.cg-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.28;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* --- the sliders -----------------------------------------------------------
+   A deep capsule with the label and the number inside it, a faint field of
+   ticks to read a position against, and one bright mark at the value. The real
+   <input type="range"> lies invisible on top, so the keyboard, the tab order
+   and screen readers stay the browser's job rather than ours.
+
+   `--k` is the value as 0..1, written inline by the control. The mark travels
+   between 10px and 10px-from-the-right, which is exactly where a 20px-wide
+   native thumb puts its centre — so the bright line sits under the pointer at
+   both ends instead of drifting away from it. */
+.cg-slider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 13px;
+  overflow: hidden;
+  background: var(--color-cg-raised);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  transition: background-color 120ms ease-out;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cg-slider:hover {
+    background: #191b20;
+  }
+}
+
+.cg-slider:focus-within {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+
+.cg-slider__ticks {
+  position: absolute;
+  inset: 0 10px;
+  background-image: repeating-linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.075) 0 1px,
+    transparent 1px 12px
+  );
+}
+
+.cg-slider__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(10px + (100% - 20px) * var(--k));
+  background: rgba(255, 255, 255, 0.085);
+}
+
+/* The middle, on a dial whose halves mean opposite things — zero, and the thing
+   you are aiming for when you want the dial off. It was drawn at 0.16 white,
+   which measures 1.63:1 against the capsule: below the 3:1 floor a control that
+   means something has to clear, and in practice invisible. Taller than the
+   moving mark and duller than it, so the two never read as the same object. */
+.cg-slider__centre {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 26px;
+  border-radius: 1px;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.cg-slider__mark {
+  position: absolute;
+  top: 50%;
+  left: calc(10px + (100% - 20px) * var(--k));
+  width: 2px;
+  height: 18px;
+  border-radius: 1.5px;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.9);
+  /* Only the size answers to being grabbed. The position must not be eased —
+     it has to sit under the pointer exactly or the slider feels broken. */
+  transition:
+    width 220ms var(--cg-ease),
+    height 220ms var(--cg-ease),
+    background-color 220ms ease-out;
+}
+
+/* The one control you touch most often, acknowledging that you touched it. */
+.cg-slider:has(.cg-slider__input:active) .cg-slider__mark {
+  width: 4px;
+  height: 28px;
+  background: #ffffff;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cg-slider:hover .cg-slider__mark {
+    height: 22px;
+  }
+}
+
+.cg-slider__label,
+.cg-slider__value {
+  position: relative;
+  z-index: 2;
+}
+
+.cg-slider__label {
+  pointer-events: none;
+}
+
+.cg-slider__input {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.cg-slider__input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 40px;
+}
+
+.cg-slider__input::-moz-range-thumb {
+  width: 20px;
+  height: 40px;
+  border: 0;
+}
+
+.cg-slider__input:disabled {
+  cursor: default;
+}
+
+/* The number doubles as a scrub handle, so it has to sit above the input. */
+.cg-slider__value {
+  z-index: 4;
+}
+
+/* --- the way back from an edit -------------------------------------------- */
+@keyframes cg-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+
+.cg-reset {
+  animation: cg-pop 140ms var(--cg-ease) both;
+}
+
+/* Appearing gently and vanishing instantly reads as a glitch. */
+@starting-style {
+  .cg-reset {
+    opacity: 0;
+  }
+}
+
+/* --- pills -----------------------------------------------------------------
+   Two to four choices in one capsule, with a single lit region that slides
+   between them. Two backgrounds crossfading reads as two things blinking; one
+   thing moving reads as a choice being made. `--i` is which option is live and
+   `--n` how many there are. */
+.cg-pill {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  padding: 3px;
+  border-radius: 11px;
+  background: var(--color-cg-raised);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.cg-pill__lit {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: calc(3px + (100% - 6px) * var(--i) / var(--n));
+  width: calc((100% - 6px) / var(--n));
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  transition: left 180ms var(--cg-ease);
+}
+
+.cg-pill__option {
+  position: relative;
+  z-index: 1;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1;
+  transition:
+    color 120ms ease-out,
+    transform 140ms ease-out;
+}
+
+.cg-pill__option:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.cg-pill__option:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: -2px;
+}
+
+.cg-pill__option:disabled {
+  cursor: default;
+}
+
+/* --- chips -----------------------------------------------------------------
+   A word and a glyph on a faint slab. The only badge shape in the interface. */
+.cg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--color-cg-muted);
+  background: rgba(255, 255, 255, 0.08);
+  transition:
+    background-color 140ms ease-out,
+    color 140ms ease-out,
+    transform 140ms ease-out;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cg-chip:hover {
+    color: var(--color-cg-text);
+    background: rgba(255, 255, 255, 0.13);
+  }
+}
+
+.cg-chip:active {
+  transform: scale(0.96);
+}
+
+.cg-chip:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 1px;
+}
+
+/* The style names. Their hover has to be gated the same way the CSS ones are —
+   a Tailwind `hover:` utility fires on a tap and stays lit afterwards. */
+.cg-style {
+  transition:
+    background-color 140ms ease-out,
+    color 140ms ease-out,
+    transform 140ms ease-out;
+}
+
+.cg-style:active {
+  transform: scale(0.97);
+}
+
+.cg-style:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 1px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cg-style[aria-pressed="false"]:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--color-cg-text);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cg-slider,
+  .cg-slider__mark,
+  .cg-pill__lit,
+  .cg-pill__option,
+  .cg-chip,
+  .cg-style {
+    transition: none;
+  }
+
+  .cg-reset {
+    animation-duration: 1ms;
+  }
+}
+
+/* Smoothing rather than an animation. The fit is recomputed on every frame a
+   dial moves, and re-targeting a short transition each time turns a staircase of
+   measurements into one continuous move. */
+.cg-stage-fit {
+  transition: transform var(--cg-fit-ms, 180ms) var(--cg-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cg-stage-fit {
+    transition: none;
+  }
+}
+
+/* --- the drawer ------------------------------------------------------------
+   Width, not transform: the scene is a flex sibling and has to actually be
+   given the room back. One easing, shared with .rise, so everything on this
+   page decelerates the same way. */
+.cg-drawer {
+  /* 360 is the width the controls are laid out for, but not at the cost of the
+     carousel: on a 375px phone a full-width drawer leaves a fifteen-pixel
+     sliver of scene, which is not a preview of anything. */
+  --cg-drawer-width: min(360px, calc(100vw - 56px));
+  /* Nothing at all when shut. The notch floats over the picture instead of
+     standing on a 26px strip of its own, so the carousel really does reach the
+     edge of the window rather than stopping just short of it. */
+  width: 0;
+  transition:
+    width 380ms var(--cg-ease),
+    opacity 200ms ease-out;
+}
+
+.cg-drawer[data-open="true"] {
+  width: var(--cg-drawer-width);
+}
+
+/* The panel carries its own background, and travels with it.
+ *
+ * It used to be bare, with the drawer painted behind it — which meant that the
+ * instant the drawer was told to close, its background vanished while the
+ * panel was still sliding, and forty controls spent 380ms travelling across a
+ * bright carousel with nothing behind them. The dark goes when the panel goes,
+ * because it is part of the panel.
+ *
+ * The two edges track each other exactly on the way: the drawer's left edge is
+ * at `vw − 360t` and so is the panel's, so there is never a seam between them.
+ */
+.cg-drawer__inner {
+  width: var(--cg-drawer-width);
+  background: var(--color-cg-panel);
+  box-shadow: inset 1px 0 0 var(--color-cg-line);
+  transform: translateX(100%);
+  transition: transform 380ms var(--cg-ease);
+}
+
+.cg-drawer[data-open="true"] .cg-drawer__inner {
+  transform: none;
+}
+
+.cg-drawer[data-hidden] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Fixed to the window rather than placed inside the drawer, which crops to 26px
+   when shut: the hover growth was being sliced off by that crop, so the one bit
+   of feedback saying "this opens" arrived as a fragment. Nothing else escapes —
+   the shell clips, and this is the only thing that needs not to be clipped. */
+.cg-notch {
+  position: fixed;
+  top: 50%;
+  right: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 92px;
+  transform: translateY(-50%);
+  border-radius: 13px 0 0 13px;
+  color: var(--color-cg-muted);
+  background: rgba(15, 16, 19, 0.82);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    inset 1px 0 0 rgba(255, 255, 255, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.09),
+    0 6px 22px -8px rgba(0, 0, 0, 0.55);
+  transition:
+    width 180ms var(--cg-ease),
+    color 140ms ease-out;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cg-notch:hover {
+    width: 32px;
+    color: var(--color-cg-text);
+  }
+}
+
+.cg-notch:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cg-drawer,
+  .cg-drawer__inner,
+  .cg-notch {
+    transition-duration: 1ms;
+  }
+}
+
+/* --- the backdrop swatches ------------------------------------------------
+   Bottom-right of the picture, opposite Export. On the thing they change, not
+   in the drawer with the dials — the backdrop is the page a carousel would sit
+   on, and none of it travels into the code you copy out. */
+.cg-backdrop {
+  display: inline-flex;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 12px;
+  background: rgba(22, 24, 28, 0.85);
+  backdrop-filter: blur(10px);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.cg-backdrop__swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: var(--swatch);
+  box-shadow: inset 0 0 0 1px var(--swatch-ring);
+  transition:
+    transform 140ms var(--cg-ease),
+    box-shadow 140ms ease-out;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cg-backdrop__swatch:hover {
+    transform: scale(1.08);
+  }
+}
+
+.cg-backdrop__swatch:active {
+  transform: scale(0.94);
+}
+
+.cg-backdrop__swatch[data-on] {
+  box-shadow:
+    inset 0 0 0 1px var(--swatch-ring),
+    0 0 0 2px rgba(255, 255, 255, 0.75);
+}
+
+.cg-backdrop__swatch:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cg-backdrop__swatch {
+    transition: none;
+  }
+}
+
+/* --- the export menu -------------------------------------------------------
+   Bottom-left, over the scene. It grows up out of its own trigger rather than
+   fading in over it: the origin is the corner it came from, so the menu reads
+   as the button opening rather than as a panel arriving from nowhere. */
+.cg-export__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--color-cg-text);
+  background: rgba(22, 24, 28, 0.85);
+  backdrop-filter: blur(10px);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition:
+    background-color 140ms ease-out,
+    transform 140ms ease-out;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cg-export__trigger:hover {
+    background: rgba(30, 32, 37, 0.9);
+  }
+}
+
+.cg-export__trigger:active {
+  transform: scale(0.97);
+}
+
+.cg-export__trigger:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 2px;
+}
+
+.cg-export__menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 196px;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(22, 24, 28, 0.92);
+  backdrop-filter: blur(14px);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 18px 40px -12px rgba(0, 0, 0, 0.7);
+  transform-origin: bottom left;
+}
+
+/* Nothing in the real world appears from nothing, so this starts at 96% rather
+   than at zero. The exit is quicker than the entrance — the system responding
+   should always outpace the person deciding. */
+@keyframes cg-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+}
+
+@keyframes cg-menu-out {
+  to {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+}
+
+.cg-export__menu[data-phase="opening"] {
+  animation: cg-menu-in 200ms var(--cg-ease) both;
+}
+
+.cg-export__menu[data-phase="closing"] {
+  animation: cg-menu-out 130ms ease-out both;
+}
+
+.cg-export__row {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  color: var(--color-cg-muted);
+  transition:
+    background-color 120ms ease-out,
+    transform 180ms var(--cg-ease);
+}
+
+/* Taken. The row settles back a touch and a band of light crosses it once —
+   a single pass, not a shimmer that keeps going, because the thing it reports
+   happened once. */
+.cg-export__row[data-taken] {
+  background: rgba(255, 255, 255, 0.07);
+  transform: translateX(2px);
+}
+
+.cg-export__sweep {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.16) 46%,
+    rgba(190, 255, 214, 0.22) 52%,
+    transparent 78%
+  );
+}
+
+.cg-export__row[data-taken] .cg-export__sweep {
+  animation: cg-sweep 620ms var(--cg-ease) 1;
+}
+
+@keyframes cg-sweep {
+  from {
+    opacity: 1;
+    transform: translateX(-105%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(105%);
+  }
+}
+
+/* Staggered on the way in only. On the way out they should leave together —
+   a menu that unravels row by row feels reluctant to close. */
+.cg-export__menu[data-phase="opening"] .cg-export__row {
+  animation: cg-menu-in 200ms var(--cg-ease) both;
+  animation-delay: calc(var(--i) * 30ms);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cg-export__row:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+}
+
+.cg-export__row:active {
+  transform: scale(0.98);
+}
+
+.cg-export__row:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: -2px;
+}
+
+/* The glyph and the tick share one box and cross over inside it, so the row
+   never reflows and the two never sit side by side. */
+.cg-export__glyph {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.cg-export__glyph-off,
+.cg-export__glyph-on {
+  position: absolute;
+  display: grid;
+  place-items: center;
+}
+
+.cg-export__glyph-off {
+  transition:
+    opacity 120ms ease-out,
+    transform 120ms ease-out;
+}
+
+.cg-export__glyph-on {
+  color: #4ade80;
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity 120ms ease-out,
+    transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.cg-export__glyph[data-done] .cg-export__glyph-off {
+  opacity: 0;
+  transform: scale(0.8);
+}
+
+.cg-export__glyph[data-done] .cg-export__glyph-on {
+  opacity: 1;
+  transform: scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cg-export__menu,
+  .cg-export__menu[data-phase="opening"] .cg-export__row,
+  .cg-export__row[data-taken] .cg-export__sweep {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+
+  .cg-export__row[data-taken] {
+    transform: none;
+  }
+
+  .cg-export__trigger,
+  .cg-export__row,
+  .cg-export__sweep,
+  .cg-export__glyph-off,
+  .cg-export__glyph-on {
+    transition: none;
+  }
+}
